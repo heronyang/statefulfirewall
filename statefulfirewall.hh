@@ -12,6 +12,7 @@ CLICK_DECLS
 using namespace std;
 
 class Connection {
+
 private:
 	String sourceip;
 	String destip;
@@ -19,6 +20,7 @@ private:
 	int destport;
 	int proto;
 	bool isfw; //true if forward connection. false if reverse connection.
+
 public:
 	Connection(String s, String d, int sp, int dp, int pr, bool fwdflag);
 	Connection();
@@ -30,7 +32,8 @@ public:
     bool is_forward() { return isfw; }  // Return value of isfw
 };
 
-class Policy{
+class Policy {
+
 private:
 	String sourceip;
 	String destip;
@@ -38,28 +41,31 @@ private:
 	int destport;
 	int proto;
 	int action;
+
 public:
 	Policy(String s, String d, int sp, int dp, int p, int act);
 	~Policy();
+
+	void print() const;
 	Connection getConnection();
 	int getAction() { return action; } // Return action for this Policy
 };
 
-struct cmp_connection
-{
-   bool operator()(Connection const a, Connection const b)
-   {
+struct cmp_connection {
+   bool operator()(Connection const a, Connection const b) {
       return a.compare(b) < 0;
    }
 };
 
 class StatefulFirewall : public Element {
-private:
-	std::map<Connection,int, cmp_connection> Connections; //Map of connections to their actions.
-	std::vector<Policy> list_of_policies;
-public:
-	StatefulFirewall();
 
+private:
+	std::map<Connection, int, cmp_connection> Connections; //Map of connections to their actions.
+	std::vector<Policy> list_of_policies;
+
+public:
+
+	StatefulFirewall();
     ~StatefulFirewall();
 
     int configure(Vector<String> &conf, ErrorHandler *errh);
