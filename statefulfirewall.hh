@@ -60,14 +60,22 @@ struct cmp_connection {
 class StatefulFirewall : public Element {
 
 private:
-	std::map<Connection, int, cmp_connection> Connections; //Map of connections to their actions.
-	std::vector<Policy> list_of_policies;
+	map<Connection, int, cmp_connection> Connections; //Map of connections to their actions.
+	vector<Policy> list_of_policies;
 
 public:
 
 	StatefulFirewall();
     ~StatefulFirewall();
 
+    /* Take the configuration paramenters as input corresponding to
+     * POLICYFILE and DEFAULT where
+     * POLICYFILE : Path of policy file
+     * DEFAULT : Default action (0/1)
+     *
+     * Example: StatefulFirewall(POLICYFILE "sample_policy.1", DEFAULT 1);
+     *
+     * Hint: Refer to configure methods in other elemsnts.*/
     int configure(Vector<String> &conf, ErrorHandler *errh);
 
     const char *class_name() const		{ return "StatefulFirewall"; }
@@ -83,8 +91,7 @@ public:
      * Hint: Check the connection ID database.
      */
     bool check_if_new_connection(const Packet *);
-
-    /*Check if the packet represent Connection reset
+    /* Check if the packet represent Connection reset
      * i.e., if the RST flag is set in the header.
      * Return true if connection reset
      * else return false.*/
@@ -92,7 +99,6 @@ public:
 
     /* Add a new connection to the map along with its action.*/
     void add_connection(Connection &c, int action);
-
     /* Delete the connection from map*/
     void delete_connection(Connection &c);
 
@@ -111,30 +117,25 @@ public:
      * */
     int read_policy_config(String);
 
-    /* Convert the integer ip address to string in dotted format.
-     * Store the string in s.
+    /* Check if Packet belongs to new connection.
+     * If new connection, apply the policy on this packet
+     * and add the result to the connection map.
+     * Else return the action in map.
+     * If Packet indicates connection reset,
+     * delete the connection from connection map.
      *
-     * Hint: ntohl could be useful.*/
-    void dotted_addr(const uint32_t *addr, char *s);
-
-
-   /* Check if Packet belongs to new connection.
-    * If new connection, apply the policy on this packet
-    * and add the result to the connection map.
-    * Else return the action in map.
-    * If Packet indicates connection reset,
-    * delete the connection from connection map.
-    *
-    * Return 1 if packet is allowed to pass
-    * Return 0 if packet is to be discarded
-    */
+     * Return 1 if packet is allowed to pass
+     * Return 0 if packet is to be discarded
+     */
     int filter_packet(const Packet *);
 
+    int apply_policy(const Connection);
+
     /* Push valid traffic on port 1
-    * Push discarded traffic on port 0*/
+     * Push discarded traffic on port 0*/
     void push(int port, Packet *);
 
-    /*The default action configured for the firewall.*/
+    /* The default action configured for the firewall. */
     int DEFAULTACTION;
 };
 

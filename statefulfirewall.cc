@@ -10,6 +10,7 @@
 #include <clicknet/ip.h>
 #include <clicknet/tcp.h>
 
+
 #if CLICK_LINUXMODULE
 # include <linux/in.h>
 #else
@@ -79,9 +80,9 @@ Connection::~Connection() {
 void
 Connection::print() const {
     //Add your implementation here.
-    cout << "[Connection] port" << endl;
-    cout << "sourceip=" << sourceip << "\t";
-    cout << "destip=" << destip << "\t";
+    cout << "[Connection] print" << endl;
+    cout << "sourceip=" << sourceip.c_str() << "\t";
+    cout << "destip=" << destip.c_str() << "\t";
     cout << "sourceport=" << sourceport << "\t";
     cout << "destport=" << destport << "\t";
     cout << "proto=" << proto << "\t";
@@ -100,8 +101,16 @@ Connection::operator==(const Connection &other) const {
 /*Compare two connections to determine the sequence in map.*/
 int
 Connection::compare(const Connection other) const {
-    //Add your implementation here.
+
     cout << "[Connection] compare" << endl;
+
+    bool s1 = (sourceip.compare(other.sourceip));
+    bool s2 = (destip.compare(other.destip));
+    bool s3 = (sourceport == other.sourceport);
+    bool s4 = (destport == other.destport);
+
+    if( s1 && s2 && s3 && s4 )  return 1;
+    return -1;
 }
 
 /**
@@ -137,7 +146,6 @@ Policy::getConnection() {
     cout << "[Policy] getConnection" << endl;
 }
 
-
 /**
  * StatefulFirewall Class
  */
@@ -154,14 +162,29 @@ StatefulFirewall::~StatefulFirewall() {
     }
 }
 
-/* Take the configuration paramenters as input corresponding to
- * POLICYFILE and DEFAULT where
- * POLICYFILE : Path of policy file
- * DEFAULT : Default action (0/1)
- *
- * Example: StatefulFirewall(POLICYFILE "sample_policy.1", DEFAULT 1);
- *
- * Hint: Refer to configure methods in other elemsnts.*/
+int
+StatefulFirewall::read_policy_config(String filepath) {
+
+    char line[LINE_LENGTH];
+    ifstream policy_file;
+    policy_file.open(filepath.c_str());
+    if (policy_file.is_open()) {
+        while (!policy_file.eof()) {
+            policy_file.getline(line, sizeof(line));
+            if (line[0] == '#' || strlen(line)<=1) continue;
+            Policy new_policy = policy_builder(line);
+            list_of_policies.push_back(new_policy);
+            new_policy.print();
+        }
+    } else {
+        return 1;
+    }
+
+    policy_file.close();
+    return 0;
+
+}
+
 int
 StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
 
@@ -177,25 +200,12 @@ StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
     }
 
     if (default_val != 1 && default_val != 0) {
-	    return errh->error("DEFAULT must be 0 or 1");
+        return errh->error("DEFAULT must be 0 or 1");
     }
 
-    char line[LINE_LENGTH];
-    ifstream policy_file;
-    policy_file.open(filepath.c_str());
-    if (policy_file.is_open()) {
-        while (!policy_file.eof()) {
-            policy_file.getline(line, sizeof(line));
-            if (line[0] == '#') continue;
-            Policy new_policy = policy_builder(line);
-            list_of_policies.push_back(new_policy);
-            new_policy.print();
-        }
-    } else {
-	    return errh->error("POLICYFILE file read error");
+    if (read_policy_config(filepath) != 0) {
+        return errh->error("POLICYFILE file read error");
     }
-    policy_file.close();
-
 
     cout << "POLICYFILE: " << filepath.c_str() << endl;
     cout << "DEFAULT: " << default_val << endl;
@@ -203,10 +213,34 @@ StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
 
 }
 
-void
-StatefulFirewall::push(int port, Packet *packet) {
+bool
+StatefulFirewall::check_if_new_connection(const Packet *packet) {
+    const click_tcp *tcp_header = packet->tcp_header();
+    bool syn_flag = (tcp_header->th_flags & TH_RST);
+    Connection con = get_canonicalized_connection(packet);
+    return (Connections.find(con) == Connections.end());
+}
 
-    cout << "[StatefulFirewall] push" << endl;
+bool
+StatefulFirewall::check_if_connection_reset(const Packet *packet) {
+    const click_tcp *tcp_header = packet->tcp_header();
+    return tcp_header->th_flags & TH_RST;
+}
+
+void
+StatefulFirewall::add_connection(Connection &c, int action) {
+    Connections.insert(pair<Connection, int>(c, action));
+}
+
+void
+StatefulFirewall::delete_connection(Connection &c) {
+    if (Connections.find(c) != Connections.end()) {
+        Connections.erase(c);
+    }
+}
+
+Connection
+StatefulFirewall::get_canonicalized_connection(const Packet *packet) {
 
     const click_ip *ip_header = packet->ip_header();
     const click_tcp *tcp_header = packet->tcp_header();
@@ -214,6 +248,7 @@ StatefulFirewall::push(int port, Packet *packet) {
     // IP
     struct in_addr ip_src = ip_header->ip_src;
     struct in_addr ip_dst = ip_header->ip_dst;
+    int proto = (int)ip_header->ip_p;
 
     String ip_src_str(inet_ntoa(ip_src));
     String ip_dst_str(inet_ntoa(ip_dst));
@@ -222,11 +257,65 @@ StatefulFirewall::push(int port, Packet *packet) {
     int sp = ((int)tcp_header->th_sport) >> BYTE_LENGTH;
     int dp = ((int)tcp_header->th_dport) >> BYTE_LENGTH;
 
-    // got it, here
-    cout << "ip_src_str = " << ip_src_str.c_str() << endl;
-    cout << "ip_dst_str = " << ip_dst_str.c_str() << endl;
-    cout << "source port = " << sp << endl;
-    cout << "destination port = " << dp << endl;
+    Connection *new_connection;
+    if( ip_src.s_addr <= ip_dst.s_addr ) {
+        new_connection = new Connection(ip_src_str, ip_dst_str,
+                sp, dp, proto, false);
+    } else {
+        new_connection = new Connection(ip_dst_str, ip_src_str,
+                dp, sp, proto, true);
+    }
+
+    return *new_connection;
+
+}
+
+int
+StatefulFirewall::filter_packet(const Packet *packet) {
+
+    Connection con = get_canonicalized_connection(packet);
+
+    if( check_if_connection_reset(packet) ) {
+        // TODO: return 0?
+        delete_connection(con);
+        con.print();
+        return 0;
+    }
+
+    if( check_if_new_connection(packet) ) {
+
+        int action = apply_policy(con);
+        add_connection(con, action);
+
+        return action;
+    }
+
+    map<Connection, int>::iterator it = Connections.find(con);
+    return it->second;
+
+}
+
+int
+StatefulFirewall::apply_policy(const Connection con) {
+    return 1;
+}
+
+void
+StatefulFirewall::push(int port, Packet *packet) {
+
+    cout << "[StatefulFirewall] push" << endl;
+    if( filter_packet(packet) ) {
+        cout << "RESULT: 1" << endl;
+    } else {
+        cout << "RESULT: 0" << endl;
+    }
+
+    cout << "==== pop all connection for fun" << endl;
+    for (map<Connection, int>::iterator it=Connections.begin();
+            it!=Connections.end(); ++it) {
+        it->first.print();
+    }
+    cout << "====" << endl;
 
 }
 
