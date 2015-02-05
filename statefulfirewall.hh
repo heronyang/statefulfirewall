@@ -47,6 +47,8 @@ public:
 	~Policy();
 
 	void print() const;
+
+    /* Return a Connection object representing policy */
 	Connection getConnection();
 	int getAction() { return action; } // Return action for this Policy
 };
@@ -62,6 +64,7 @@ class StatefulFirewall : public Element {
 private:
 	map<Connection, int, cmp_connection> Connections; //Map of connections to their actions.
 	vector<Policy> list_of_policies;
+    int default_val;
 
 public:
 

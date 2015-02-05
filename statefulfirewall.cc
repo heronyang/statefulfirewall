@@ -57,29 +57,19 @@ Policy policy_builder(char *line) {
  * Connection Class
  */
 Connection::Connection(String s, String d, int sp, int dp, int pr, bool fwdflag) {
-    //Add your implementation here.
-    cout << "[Connection] Connection (...)" << endl;
-
     sourceip = s;
     destip = d;
     sourceport = sp;
     destport = dp;
     proto = pr;
     isfw = fwdflag;
-
-    print();
 }
-Connection::Connection() {
-    cout << "[Connection] Connection" << endl;
-}
-Connection::~Connection() {
-    cout << "[Connection] ~Connection" << endl;
-}
+Connection::Connection() { }
+Connection::~Connection() { }
 
 /* Can be useful for debugging*/
 void
 Connection::print() const {
-    //Add your implementation here.
     cout << "[Connection] print" << endl;
     cout << "sourceip=" << sourceip.c_str() << "\t";
     cout << "destip=" << destip.c_str() << "\t";
@@ -94,22 +84,20 @@ Connection::print() const {
  * Return true if equal. false otherwise. */
 bool
 Connection::operator==(const Connection &other) const {
-    //Add your implementation here.
-    cout << "[Connection] operator==" << endl;
+    return (compare(other) == 1);
 }
 
 /*Compare two connections to determine the sequence in map.*/
 int
 Connection::compare(const Connection other) const {
 
-    cout << "[Connection] compare" << endl;
-
-    bool s1 = (sourceip.compare(other.sourceip));
-    bool s2 = (destip.compare(other.destip));
+    bool s1 = (sourceip.compare(other.sourceip)==0);
+    bool s2 = (destip.compare(other.destip)==0);
     bool s3 = (sourceport == other.sourceport);
     bool s4 = (destport == other.destport);
+    bool s5 = (proto == other.proto);
 
-    if( s1 && s2 && s3 && s4 )  return 1;
+    if( s1 && s2 && s3 && s4 && s5 )  return 1;
     return -1;
 }
 
@@ -117,8 +105,6 @@ Connection::compare(const Connection other) const {
  * Policy
  */
 Policy::Policy(String s, String d, int sp, int dp, int p, int act) {
-    //Add your implementation here.
-    cout << "[Policy] Policy" << endl;
     sourceip = s;
     destip = d;
     sourceport = sp;
@@ -126,9 +112,7 @@ Policy::Policy(String s, String d, int sp, int dp, int p, int act) {
     proto = p;
     action = act;
 }
-Policy::~Policy() {
-    cout << "[Policy] ~Policy" << endl;
-}
+Policy::~Policy() { }
 
 void
 Policy::print() const {
@@ -140,26 +124,31 @@ Policy::print() const {
     cout << "action: " << action << endl;
 }
 
-/* Return a Connection object representing policy */
 Connection
 Policy::getConnection() {
-    cout << "[Policy] getConnection" << endl;
+    Connection *con;
+    if( sourceip.compare(destip) < 0 ) {
+        con = new Connection(sourceip, destip, sourceport, destport, proto, false);
+    } else {
+        con = new Connection(destip, sourceip, destport, sourceport, proto, true);
+    }
+    return *con;
 }
 
 /**
  * StatefulFirewall Class
  */
 StatefulFirewall::StatefulFirewall() {
-    cout << "[StatefulFirewall] StatefulFirewall" << endl;
 }
 
 StatefulFirewall::~StatefulFirewall() {
-    cout << "[StatefulFirewall] ~StatefulFirewall" << endl;
+    /*
     cout << "print out all policies for fun" << endl;
     for(vector<Policy>::iterator it = list_of_policies.begin();
             it != list_of_policies.end(); ++it) {
         it->print();
     }
+    */
 }
 
 int
@@ -188,10 +177,7 @@ StatefulFirewall::read_policy_config(String filepath) {
 int
 StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
 
-    cout << "[StatefulFirewall] configure" << endl;
-
     String filepath = "";
-    int default_val = 0;
     if (Args(conf, this, errh)
             .read_mp("POLICYFILE", filepath)
             .read_mp("DEFAULT", default_val)
@@ -207,8 +193,6 @@ StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
         return errh->error("POLICYFILE file read error");
     }
 
-    cout << "POLICYFILE: " << filepath.c_str() << endl;
-    cout << "DEFAULT: " << default_val << endl;
     return 0;
 
 }
@@ -258,7 +242,7 @@ StatefulFirewall::get_canonicalized_connection(const Packet *packet) {
     int dp = ((int)tcp_header->th_dport) >> BYTE_LENGTH;
 
     Connection *new_connection;
-    if( ip_src.s_addr <= ip_dst.s_addr ) {
+    if( ip_src_str.compare(ip_dst_str) < 0 ) {
         new_connection = new Connection(ip_src_str, ip_dst_str,
                 sp, dp, proto, false);
     } else {
@@ -297,25 +281,29 @@ StatefulFirewall::filter_packet(const Packet *packet) {
 
 int
 StatefulFirewall::apply_policy(const Connection con) {
-    return 1;
+    for(vector<Policy>::iterator it = list_of_policies.begin();
+            it != list_of_policies.end(); ++it) {
+        Policy p = *it;
+        if( p.getConnection() == con ) {
+            return p.getAction();
+        }
+    }
+    return default_val;
 }
 
 void
 StatefulFirewall::push(int port, Packet *packet) {
 
-    cout << "[StatefulFirewall] push" << endl;
-    if( filter_packet(packet) ) {
-        cout << "RESULT: 1" << endl;
-    } else {
-        cout << "RESULT: 0" << endl;
-    }
-
+    int p = (filter_packet(packet))? 1 : port;
+    output(p).push(packet);
+    /*
     cout << "==== pop all connection for fun" << endl;
     for (map<Connection, int>::iterator it=Connections.begin();
             it!=Connections.end(); ++it) {
         it->first.print();
     }
     cout << "====" << endl;
+    */
 
 }
 
