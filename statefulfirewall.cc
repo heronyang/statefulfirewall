@@ -48,7 +48,6 @@ Policy policy_builder(char *line) {
     String destip_str(destip.c_str());
 
     Policy policy(sourceip_str, destip_str, sourceport, destport, proto, action);
-    policy.print();
 
     return policy;
 }
@@ -87,15 +86,17 @@ Connection::operator==(const Connection &other) const {
     return (compare(other) == 1);
 }
 
-/*Compare two connections to determine the sequence in map.*/
+/* Compare two connections to determine the sequence in map. */
 int
 Connection::compare(const Connection other) const {
 
-    bool s1 = (sourceip.compare(other.sourceip)==0);
-    bool s2 = (destip.compare(other.destip)==0);
-    bool s3 = (sourceport == other.sourceport);
-    bool s4 = (destport == other.destport);
-    bool s5 = (proto == other.proto);
+    bool s1, s2, s3, s4, s5;
+
+    s1 = (sourceip.compare(other.sourceip)==0);
+    s2 = (destip.compare(other.destip)==0);
+    s3 = (sourceport == other.sourceport);
+    s4 = (destport == other.destport);
+    s5 = (proto == other.proto);
 
     if( s1 && s2 && s3 && s4 && s5 )  return 1;
     return -1;
@@ -139,6 +140,7 @@ Policy::getConnection() {
  * StatefulFirewall Class
  */
 StatefulFirewall::StatefulFirewall() {
+    no = 1;
 }
 
 StatefulFirewall::~StatefulFirewall() {
@@ -200,9 +202,16 @@ StatefulFirewall::configure(Vector<String> &conf, ErrorHandler *errh) {
 bool
 StatefulFirewall::check_if_new_connection(const Packet *packet) {
     const click_tcp *tcp_header = packet->tcp_header();
-    bool syn_flag = (tcp_header->th_flags & TH_RST);
+    // bool syn_flag = (tcp_header->th_flags & TH_RST);
     Connection con = get_canonicalized_connection(packet);
-    return (Connections.find(con) == Connections.end());
+    for (map<Connection, int>::iterator it=Connections.begin();
+            it!=Connections.end(); ++it) {
+        if (it->first == con) {
+            return false;
+        }
+    }
+    // return (Connections.find(con) == Connections.end());
+    return true;
 }
 
 bool
@@ -218,8 +227,13 @@ StatefulFirewall::add_connection(Connection &c, int action) {
 
 void
 StatefulFirewall::delete_connection(Connection &c) {
-    if (Connections.find(c) != Connections.end()) {
-        Connections.erase(c);
+    cout << "delete connection (no:" << no << ")" << endl;
+    c.print();
+    for (map<Connection, int>::iterator it=Connections.begin();
+            it!=Connections.end(); ++it) {
+        if (it->first == c) {
+            cout << "earse: " << Connections.erase(it->first) << endl;
+        }
     }
 }
 
@@ -259,32 +273,43 @@ StatefulFirewall::filter_packet(const Packet *packet) {
 
     Connection con = get_canonicalized_connection(packet);
 
-    if( check_if_connection_reset(packet) ) {
-        // TODO: return 0?
-        delete_connection(con);
-        con.print();
-        return 0;
-    }
-
     if( check_if_new_connection(packet) ) {
 
+        cout << "new connection (no:" << no << ")" << endl;
+        con.print();
+
         int action = apply_policy(con);
-        add_connection(con, action);
+
+        if( check_if_connection_reset(packet) ) {
+            delete_connection(con);
+        } else {
+            add_connection(con, action);
+        }
 
         return action;
     }
 
-    map<Connection, int>::iterator it = Connections.find(con);
-    return it->second;
+    int res = 0;
+    for (map<Connection, int>::iterator it=Connections.begin();
+            it!=Connections.end(); ++it) {
+        if (it->first == con) {
+            res = it->second;
+        }
+    }
+    if( check_if_connection_reset(packet) ) {
+        delete_connection(con);
+    }
+    return res;
 
 }
 
 int
-StatefulFirewall::apply_policy(const Connection con) {
+StatefulFirewall::apply_policy(Connection con) {
     for(vector<Policy>::iterator it = list_of_policies.begin();
             it != list_of_policies.end(); ++it) {
         Policy p = *it;
-        if( p.getConnection() == con ) {
+        Connection pc = p.getConnection();
+        if( pc == con && (pc.is_forward() == con.is_forward()) ) {
             return p.getAction();
         }
     }
@@ -304,7 +329,7 @@ StatefulFirewall::push(int port, Packet *packet) {
     }
     cout << "====" << endl;
     */
-
+    no ++;
 }
 
 CLICK_ENDDECLS

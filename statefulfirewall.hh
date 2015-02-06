@@ -65,6 +65,7 @@ private:
 	map<Connection, int, cmp_connection> Connections; //Map of connections to their actions.
 	vector<Policy> list_of_policies;
     int default_val;
+    int no;
 
 public:
 
@@ -132,7 +133,7 @@ public:
      */
     int filter_packet(const Packet *);
 
-    int apply_policy(const Connection);
+    int apply_policy(Connection);
 
     /* Push valid traffic on port 1
      * Push discarded traffic on port 0*/
